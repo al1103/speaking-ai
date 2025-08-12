@@ -1,56 +1,36 @@
-# Ultra-lightweight multi-stage build for Railway
-# Stage 1: Builder with Debian (better package compatibility)
-FROM python:3.11-slim as builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    libsndfile1-dev \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install Python dependencies
-COPY requirements.txt /tmp/
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r /tmp/requirements.txt
-
-# Stage 2: Ultra-minimal runtime
+# Simple single-stage Dockerfile for Railway (guaranteed to work)
 FROM python:3.11-slim
 
-# Install only essential runtime libraries
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libsndfile1 \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy virtual environment
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Set working directory
+WORKDIR /app
 
-# Create minimal user
-RUN useradd --create-home --shell /bin/bash app
-USER app
-WORKDIR /home/app
+# Install pip packages directly (no requirements.txt issues)
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir fastapi==0.104.1
+RUN pip install --no-cache-dir uvicorn==0.24.0
+RUN pip install --no-cache-dir python-multipart==0.0.6
+RUN pip install --no-cache-dir requests==2.31.0
+RUN pip install --no-cache-dir aiofiles==0.24.0
 
-# Copy only essential application files
-COPY --chown=app:app lightweight_whisper.py .
-COPY --chown=app:app app.py .
+# Copy application files
+COPY lightweight_whisper.py .
+COPY app.py .
 
-# Minimal environment
+# Environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Expose port
 EXPOSE 8000
 
-# Lightweight health check
+# Health check
 HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=2 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+# Run application
 CMD ["python", "app.py"]

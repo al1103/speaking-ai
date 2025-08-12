@@ -9,8 +9,6 @@ import requests
 import json
 import os
 import tempfile
-import soundfile as sf
-import numpy as np
 from typing import Union, Optional
 import asyncio
 import aiofiles
@@ -38,63 +36,31 @@ class LightweightWhisperService:
 
     def preprocess_audio(self, audio_path: str) -> str:
         """
-        Lightweight audio preprocessing
+        Simplified audio preprocessing - HF API handles most audio formats
+        """
+        # HF API có thể handle nhiều audio formats trực tiếp
+        # Không cần preprocessing phức tạp
+        return audio_path
+
+    async def transcribe_with_hf(self, audio_path: str, language: Optional[str] = None) -> str:
+        """
+        Transcribe using Hugging Face Inference API (FREE) - simplified version
         """
         try:
-            # Đọc audio file
-            data, samplerate = sf.read(audio_path)
-
-            # Convert to mono if stereo
-            if len(data.shape) > 1:
-                data = np.mean(data, axis=1)
-
-            # Resample to 16kHz if needed (basic resampling)
-            if samplerate != 16000:
-                # Simple decimation/interpolation
-                ratio = 16000 / samplerate
-                new_length = int(len(data) * ratio)
-                data = np.interp(np.linspace(0, len(data), new_length),
-                               np.arange(len(data)), data)
-
-            # Save preprocessed audio
-            temp_path = audio_path + "_processed.wav"
-            sf.write(temp_path, data, 16000)
-            return temp_path
-
-        except Exception as e:
-            print(f"Error preprocessing audio: {e}")
-            return audio_path  # Return original if preprocessing fails
-
-        async def transcribe_with_hf(self, audio_path: str, language: Optional[str] = None) -> str:
-        """
-        Transcribe using Hugging Face Inference API (FREE)
-        """
-        try:
-            processed_path = self.preprocess_audio(audio_path)
-
-            # Setup headers
-            headers = {
-                "Content-Type": "audio/wav"
-            }
+            # Setup headers for binary audio data
+            headers = {}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
-            # Đọc audio data
-            async with aiofiles.open(processed_path, 'rb') as f:
+            # Đọc audio data trực tiếp
+            async with aiofiles.open(audio_path, 'rb') as f:
                 audio_data = await f.read()
-
-            # HF Inference API parameters
-            params = {}
-            if language:
-                # HF API có thể nhận language parameter
-                params["language"] = language
 
             # Call Hugging Face Inference API
             response = requests.post(
                 self.api_url,
                 headers=headers,
                 data=audio_data,
-                params=params,
                 timeout=60  # HF API có thể mất thời gian load model lần đầu
             )
 
@@ -125,13 +91,6 @@ class LightweightWhisperService:
             return f"Network error: {str(e)}"
         except Exception as e:
             return f"Transcription error: {str(e)}"
-        finally:
-            # Cleanup preprocessed file
-            if 'processed_path' in locals() and processed_path != audio_path:
-                try:
-                    os.unlink(processed_path)
-                except:
-                    pass
 
     async def transcribe_with_openai(self, audio_path: str, language: Optional[str] = None) -> str:
         """
@@ -180,7 +139,7 @@ class LightweightWhisperService:
                 except:
                     pass
 
-        async def transcribe(self, audio: Union[str, bytes], language: Optional[str] = None) -> str:
+    async def transcribe(self, audio: Union[str, bytes], language: Optional[str] = None) -> str:
         """
         Main transcription method - luôn sử dụng Hugging Face API
         """
@@ -206,33 +165,21 @@ class LightweightWhisperService:
 # Fallback local implementation (very basic)
 class FallbackWhisperService:
     """
-    Fallback service khi không có API key
-    Chỉ trả về mock response hoặc basic audio info
+    Fallback service - simplified without audio processing libraries
     """
 
     def __init__(self):
-        print("Using fallback Whisper service (no API key provided)")
+        print("Using fallback Whisper service")
 
     async def transcribe(self, audio: Union[str, bytes], language: Optional[str] = None) -> str:
         try:
-            # Basic audio analysis
             if isinstance(audio, bytes):
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-                    temp_file.write(audio)
-                    audio_path = temp_file.name
+                file_size = len(audio)
+                return f"[Fallback Service] Audio file received ({file_size} bytes). " \
+                       f"HF API service temporarily unavailable. Please try again later."
             else:
-                audio_path = audio
-
-            # Get audio info
-            try:
-                data, samplerate = sf.read(audio_path)
-                duration = len(data) / samplerate
-
-                return f"[Fallback Service] Audio processed: {duration:.2f}s, {samplerate}Hz. " \
-                       f"Transcription unavailable without API key. " \
-                       f"Set OPENAI_API_KEY or HF_API_KEY environment variable."
-            except:
-                return "[Fallback Service] Audio file processed, but transcription unavailable without API key."
+                return f"[Fallback Service] Audio file: {audio}. " \
+                       f"HF API service temporarily unavailable. Please try again later."
 
         except Exception as e:
             return f"Fallback service error: {str(e)}"
