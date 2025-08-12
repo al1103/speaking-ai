@@ -1,40 +1,43 @@
 # Ultra-lightweight multi-stage build for Railway
-# Stage 1: Minimal builder
-FROM python:3.11-alpine as builder
+# Stage 1: Builder with Debian (better package compatibility)
+FROM python:3.11-slim as builder
 
-# Install minimal build dependencies
-RUN apk add --no-cache \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    musl-dev \
-    libffi-dev
+    libc6-dev \
+    libsndfile1-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install minimal Python dependencies
+# Install Python dependencies
 COPY requirements.txt /tmp/
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Stage 2: Ultra-minimal runtime
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
 # Install only essential runtime libraries
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libsndfile \
+    libsndfile1 \
     curl \
-    && rm -rf /var/cache/apk/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Copy virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Create minimal user
-RUN adduser -D -h /app app
+RUN useradd --create-home --shell /bin/bash app
 USER app
-WORKDIR /app
+WORKDIR /home/app
 
 # Copy only essential application files
 COPY --chown=app:app lightweight_whisper.py .
