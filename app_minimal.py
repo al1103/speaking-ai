@@ -4,11 +4,13 @@ Minimal Whisper API for Railway deployment
 Chỉ sử dụng essential dependencies
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 import uvicorn
 import os
+import tempfile
 import time
+import requests
 
 # Simple FastAPI app without file uploads (test với URL first)
 app = FastAPI(
@@ -68,8 +70,90 @@ async def get_info():
         "model": "openai/whisper-small",
         "supported_languages": ["vi", "en", "fr", "de", "es", "ja", "ko", "zh"],
         "free_tier_limits": "~1000 requests/hour",
-        "note": "File upload coming soon - testing API connectivity first"
+        "endpoints": ["/", "/health", "/test", "/transcribe", "/info"]
     }
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    Transcribe audio file using HF Inference API
+    """
+    try:
+        # Validate file
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No file provided")
+
+        # Check file size (max 25MB)
+        file_content = await file.read()
+        if len(file_content) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large (max 25MB)")
+
+        # Save to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+            temp_file.write(file_content)
+            temp_path = temp_file.name
+
+        start_time = time.time()
+
+        # Call HF API
+        api_url = "https://api-inference.huggingface.co/models/openai/whisper-small"
+        headers = {}
+
+        # Add API key if available
+        hf_key = os.environ.get('HF_API_KEY')
+        if hf_key:
+            headers["Authorization"] = f"Bearer {hf_key}"
+
+        response = requests.post(
+            api_url,
+            headers=headers,
+            data=file_content,
+            timeout=60
+        )
+
+        processing_time = time.time() - start_time
+
+        # Clean up temp file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+
+        if response.status_code == 200:
+            result = response.json()
+            transcription = result.get('text', 'No transcription available')
+
+            return {
+                "transcription": transcription,
+                "filename": file.filename,
+                "processing_time": round(processing_time, 2),
+                "file_size": len(file_content),
+                "api_provider": "Hugging Face",
+                "timestamp": time.time()
+            }
+        elif response.status_code == 503:
+            raise HTTPException(
+                status_code=503,
+                detail="Model đang loading, vui lòng thử lại sau 30-60 giây"
+            )
+        elif response.status_code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded, vui lòng thử lại sau"
+            )
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"HF API Error: {response.text[:200]}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error: {str(e)}"
+        )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
