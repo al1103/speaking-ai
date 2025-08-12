@@ -1,11 +1,16 @@
-torch>=2.0.0
+# Core ML libraries (optimized versions)
+torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
 transformers>=4.35.0
 librosa>=0.10.0
 numpy>=1.24.0
-accelerate>=0.20.0
-safetensors>=0.3.0
 soundfile>=0.12.0
+
+# Web framework (lightweight)
 fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
+uvicorn>=0.24.0
 python-multipart>=0.0.6
-python-magic>=0.4.27
+
+# Optional optimizations (removed to reduce size)
+# accelerate>=0.20.0  # Not essential for CPU inference
+# safetensors>=0.3.0  # Will use default loading
+# python-magic>=0.4.27  # File type detection not critical

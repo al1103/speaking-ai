@@ -17,7 +17,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-from whisper_connection import WhisperConnection
+from optimize_whisper import get_whisper_instance, cleanup_whisper
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -46,11 +46,11 @@ whisper_model = None
 executor = ThreadPoolExecutor(max_workers=2)
 
 def initialize_whisper():
-    """Khởi tạo Whisper model"""
+    """Khởi tạo optimized Whisper model"""
     global whisper_model
     try:
-        logger.info("Đang khởi tạo Whisper model...")
-        whisper_model = WhisperConnection()
+        logger.info("Đang khởi tạo optimized Whisper model...")
+        whisper_model = get_whisper_instance()
         logger.info("Whisper model đã được khởi tạo thành công!")
         return True
     except Exception as e:
