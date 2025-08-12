@@ -1,16 +1,12 @@
-# Core ML libraries (optimized versions)
-torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
-transformers>=4.35.0
-librosa>=0.10.0
-numpy>=1.24.0
-soundfile>=0.12.0
+# Minimal dependencies - ultra lightweight
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+numpy==1.24.4
+requests==2.31.0
+aiofiles==0.24.0
 
-# Web framework (lightweight)
-fastapi>=0.104.0
-uvicorn>=0.24.0
-python-multipart>=0.0.6
+# Audio processing - minimal
+soundfile==0.12.1
 
-# Optional optimizations (removed to reduce size)
-# accelerate>=0.20.0  # Not essential for CPU inference
-# safetensors>=0.3.0  # Will use default loading
-# python-magic>=0.4.27  # File type detection not critical
+# Remove heavy ML libraries - will use external API or minimal implementation

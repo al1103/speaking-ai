@@ -17,7 +17,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-from optimize_whisper import get_whisper_instance, cleanup_whisper
+from lightweight_whisper import get_whisper_service
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -46,15 +46,15 @@ whisper_model = None
 executor = ThreadPoolExecutor(max_workers=2)
 
 def initialize_whisper():
-    """Khởi tạo optimized Whisper model"""
+    """Khởi tạo lightweight Whisper service"""
     global whisper_model
     try:
-        logger.info("Đang khởi tạo optimized Whisper model...")
-        whisper_model = get_whisper_instance()
-        logger.info("Whisper model đã được khởi tạo thành công!")
+        logger.info("Đang khởi tạo lightweight Whisper service...")
+        whisper_model = get_whisper_service()
+        logger.info("Whisper service đã được khởi tạo thành công!")
         return True
     except Exception as e:
-        logger.error(f"Lỗi khởi tạo Whisper model: {e}")
+        logger.error(f"Lỗi khởi tạo Whisper service: {e}")
         return False
 
 @app.on_event("startup")
@@ -145,14 +145,9 @@ async def transcribe_audio(
             temp_file.write(file_content)
             temp_file_path = temp_file.name
 
-        # Thực hiện transcription trong thread pool
-        def transcribe_sync():
-            return whisper_model.transcribe(temp_file_path, language=language)
-
+                # Thực hiện transcription với async
         start_time = time.time()
-        transcription = await asyncio.get_event_loop().run_in_executor(
-            executor, transcribe_sync
-        )
+        transcription = await whisper_model.transcribe(temp_file_path, language=language)
         processing_time = time.time() - start_time
 
         # Xóa file tạm thời
@@ -230,34 +225,30 @@ async def transcribe_batch(
                 'size': len(file_content)
             })
 
-        # Thực hiện transcription
+                # Thực hiện transcription batch với async
         start_time = time.time()
 
-        def transcribe_all():
-            batch_results = []
-            for temp_file_info in temp_files:
-                try:
-                    transcription = whisper_model.transcribe(
-                        temp_file_info['path'],
-                        language=language
-                    )
-                    batch_results.append({
-                        "filename": temp_file_info['filename'],
-                        "transcription": transcription,
-                        "file_size": temp_file_info['size'],
-                        "success": True
-                    })
-                except Exception as e:
-                    batch_results.append({
-                        "filename": temp_file_info['filename'],
-                        "error": str(e),
-                        "success": False
-                    })
-            return batch_results
+        batch_results = []
+        for temp_file_info in temp_files:
+            try:
+                transcription = await whisper_model.transcribe(
+                    temp_file_info['path'],
+                    language=language
+                )
+                batch_results.append({
+                    "filename": temp_file_info['filename'],
+                    "transcription": transcription,
+                    "file_size": temp_file_info['size'],
+                    "success": True
+                })
+            except Exception as e:
+                batch_results.append({
+                    "filename": temp_file_info['filename'],
+                    "error": str(e),
+                    "success": False
+                })
 
-        results = await asyncio.get_event_loop().run_in_executor(
-            executor, transcribe_all
-        )
+        results = batch_results
 
         processing_time = time.time() - start_time
 
@@ -286,7 +277,7 @@ async def transcribe_batch(
 
 @app.get("/languages")
 async def get_supported_languages():
-    """Lấy danh sách ngôn ngữ được hỗ trợ"""
+    """Lấy danh sách ngôn ngữ được hỗ trợ bởi Hugging Face Whisper API"""
     languages = {
         "vi": "Tiếng Việt",
         "en": "English",
@@ -311,9 +302,12 @@ async def get_supported_languages():
     }
 
     return {
+        "api_provider": "Hugging Face Inference API",
+        "model": "openai/whisper-small",
         "supported_languages": languages,
         "total": len(languages),
-        "note": "Mã ngôn ngữ có thể được sử dụng trong parameter 'language'"
+        "note": "Sử dụng Hugging Face miễn phí với rate limits",
+        "rate_limits": "~1000 requests/hour cho free tier"
     }
 
 if __name__ == "__main__":

@@ -86,14 +86,21 @@ nosetests.xml
 # Jupyter Notebooks
 .ipynb_checkpoints
 
-# Model files (will be downloaded at runtime)
+# Model files (using external API, no local models)
 *.bin
 *.safetensors
 *.pt
 *.pth
+*.onnx
 model/
 models/
 checkpoints/
+cache/
+
+# Heavy ML libraries (removed from requirements)
+*torch*
+*transformers*
+*librosa*
 
 # Logs và temporary files
 *.log

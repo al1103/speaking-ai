@@ -1,57 +1,53 @@
-# Multi-stage build để giảm kích thước image
-FROM python:3.11-slim as builder
+# Ultra-lightweight multi-stage build for Railway
+# Stage 1: Minimal builder
+FROM python:3.11-alpine as builder
 
-# Cài đặt build dependencies
-RUN apt-get update && apt-get install -y \
+# Install minimal build dependencies
+RUN apk add --no-cache \
     gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+    musl-dev \
+    libffi-dev
 
-# Tạo virtual environment
+# Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy và cài đặt Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+# Install minimal Python dependencies
+COPY requirements.txt /tmp/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Production stage
-FROM python:3.11-slim
+# Stage 2: Ultra-minimal runtime
+FROM python:3.11-alpine
 
-# Cài đặt chỉ runtime dependencies
-RUN apt-get update && apt-get install -y \
+# Install only essential runtime libraries
+RUN apk add --no-cache \
     ffmpeg \
-    libsndfile1 \
+    libsndfile \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/cache/apk/*
 
-# Copy virtual environment từ builder stage
+# Copy virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Tạo non-root user để chạy app
-RUN useradd --create-home --shell /bin/bash app
+# Create minimal user
+RUN adduser -D -h /app app
 USER app
-WORKDIR /home/app
+WORKDIR /app
 
-# Copy source code với ownership cho user app
-COPY --chown=app:app optimize_whisper.py .
+# Copy only essential application files
+COPY --chown=app:app lightweight_whisper.py .
 COPY --chown=app:app app.py .
 
-# Set environment variables
-ENV TRANSFORMERS_CACHE=/tmp/model_cache
-ENV HF_HOME=/tmp/model_cache
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+# Minimal environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5m --retries=3 \
+# Lightweight health check
+HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=2 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Chạy ứng dụng
 CMD ["python", "app.py"]
